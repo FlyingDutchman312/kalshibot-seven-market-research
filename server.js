@@ -15,17 +15,32 @@ async function tickSymbol(s){
  const id=`quote:${m.ticker}:${Math.floor(Date.now()/30000)}`;
  await store.put('quote',s,m.ticker,id,snap,now);
  const cp=checkpoint(m);
- if(cp){const pid=`forward:${m.ticker}:${cp}`;if(!await store.find('forward',s,pid)){
-   const quotes=(await store.list('quote',s,250,m.ticker)).reverse();
-   const f=forecast(quotes);
-   if(f.ready){await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
-     // Only the first qualifying checkpoint generates one shadow decision per market.
-     // The prediction and quote are captured BEFORE official outcome publication.
-     if(cp===3){const paperId=`paper:${m.ticker}`;
-       if(!await store.find('paper',s,paperId))await store.put('paper',s,m.ticker,paperId,{...candidate({...f,checkpoint:cp},snap),origin:'live_pre_settlement_shadow',observed_quote_at:now,market_close_time:m.close_time},now);
+ if(cp){
+   const pid=`forward:${m.ticker}:${cp}`;
+   const paperId=`paper:${m.ticker}`;
+   const existingForward=await store.find('forward',s,pid);
+   // Do not repair missed historical minute-3 decisions. Only evaluate when
+   // this poll is genuinely inside the current market's minute-3 window.
+   const existingPaper=cp===3?await store.find('paper',s,paperId):null;
+   const needsForward=!existingForward;
+   const needsPaper=cp===3&&!existingPaper;
+   if(needsForward||needsPaper){
+     const quotes=(await store.list('quote',s,250,m.ticker)).reverse();
+     const f=forecast(quotes);
+     if(f.ready){
+       if(needsForward){
+         await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
+       }
+       // Independent of whether the forward row already exists. If an earlier
+       // attempt saved forward but not paper, a subsequent *live* minute-3
+       // poll can still write its one prospective paper observation.
+       if(needsPaper){
+         await store.put('paper',s,m.ticker,paperId,{...candidate({...f,checkpoint:cp},snap),origin:'live_pre_settlement_shadow',observed_quote_at:now,market_close_time:m.close_time},now);
+         console.info('PAPER_SAVED',s,m.ticker);
+       }
      }
    }
- }}
+ }
 }
 async function auditTicker(s,ticker){
  const m=(await kalshi('/markets/'+encodeURIComponent(ticker))).market;
