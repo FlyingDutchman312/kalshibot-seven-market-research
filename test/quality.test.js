@@ -1,0 +1,11 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {assessQuote}=require('../quality');const {candidate}=require('../paper');
+const t='2026-11-23T02:00:00.000Z';
+const q={yes_bid:.49,yes_ask:.50,no_ask:.51,status:'active',close_time:'2026-11-23T02:15:00.000Z'};
+const ctx={request_started_at:'2026-11-23T01:59:59.000Z',response_received_at:t,request_duration_ms:1000};
+test('valid worker observed quote does not imply exchange freshness',()=>{const r=assessQuote(q,ctx,Date.parse(t));assert.equal(r.worker_observation_quality,'PASS');assert.equal(r.exchange_freshness_verified,false);assert.equal(r.receipt_age_ms,0);});
+test('slow response rejects candidate',()=>{const v=assessQuote(q,{...ctx,request_duration_ms:11000},Date.parse(t));assert.equal(v.worker_observation_quality,'REJECT');assert.equal(candidate({side:'YES',p_yes:.9,confidence:.9,checkpoint:3}, {...q,...v}).reason,'QUOTE_QUALITY_REJECT');});
+test('missing timing fail closed; historical rows remain untouched',()=>{const v=assessQuote(q,{},Date.parse(t));assert.equal(v.worker_observation_quality,'REJECT');assert.equal(candidate({side:'YES',p_yes:.9,confidence:.9,checkpoint:3},q).reason,'QUOTE_QUALITY_UNKNOWN');});
+test('crossed quote and stale worker receipt fail',()=>{assert.ok(assessQuote({...q,yes_bid:.7},ctx,Date.parse(t)).quality_reasons.includes('INVALID_BID_ASK'));assert.ok(assessQuote(q,ctx,Date.parse(t)+11000).quality_reasons.includes('STALE_WORKER_OBSERVATION'));});
+test('quality pass preserves existing confidence/edge rules',()=>{const good={...q,...assessQuote(q,ctx,Date.parse(t))};assert.equal(candidate({side:'YES',p_yes:.52,confidence:.52,checkpoint:3},good).reason,'LOW_CONFIDENCE');assert.equal(candidate({side:'YES',p_yes:.8,confidence:.8,checkpoint:3},good).decision,'PAPER_CANDIDATE');});
