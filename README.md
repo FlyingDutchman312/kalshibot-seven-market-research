@@ -1,3 +1,11 @@
+## Phase 2.3.4 — Trade qualification & model edge diagnostics
+
+New `edge_analysis.js` and a new research-only dashboard section summarize existing paper candidate decisions, cost-adjusted scenario edge, settled loss diagnostics, and minute-3 Brier comparisons against the stored quote midpoint. No new tables or environment variables. No order routes and no changed gates.
+
+**Caveats:** Stored quote midpoint is not executable price. Expected value relies on uncalibrated model probabilities, estimated standard taker fees, and hypothetical whole-contract fills. Prospective display cutoff 2026-11-23 14:00 UTC is a labeling choice, not an untouched test sample. No model is promoted based on this report. All calculations are observation-only; historical records are unchanged.
+
+**Smoke test:** Deploy, unlock research, open each market, locate `Phase 2.3.4 · Trade Qualification & Model Edge Diagnostics`, compare eligible/skip counts to V2.3.3 scenario, export CSV. Run `npm test` and `npm run check`.
+
 # KalshiBot Mission Control — Seven-Market Research Release
 
 **Assets:** BTC, BNB, ETH, SOL, XRP, GOLD, SILVER; market duration: 15 minutes. Node.js 22+; no npm dependencies. **Research-only. Zero order routes, zero trade execution, no live trading switch.**
