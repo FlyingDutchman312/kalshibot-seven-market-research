@@ -1,0 +1,8 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');const {validation}=require('../prospective');
+const f=(ticker,at='2026-11-23T14:03:00Z')=>({ticker,at,checkpoint:3,side:'YES',confidence:.75,p_yes:.75,baseline_p_yes:.65,official_result_known_at_prediction:false});
+const o=ticker=>({ticker,result:'yes',verified:true,source:'kalshi_official'});
+test('only after cutoff, minute 3 and verified official outcomes counted',()=>{const x=validation([f('A'),{...f('OLD'),at:'2026-11-22T14:03:00Z'}, {...f('B'),checkpoint:5}, {...f('C'),official_result_known_at_prediction:true},f('D')],[o('A'),o('OLD'),o('B'),o('C')],[]);assert.equal(x.summary.minute3_saved,2);assert.equal(x.summary.minute3_verified,1);assert.equal(x.summary.minute3_pending,1);assert.ok(x.summary.all.brier_advantage>0);});
+test('duplicate forward ticker counted once',()=>{const x=validation([f('A'),f('A','2026-11-23T14:04:00Z')],[o('A')],[]);assert.equal(x.summary.minute3_verified,1);});
+test('skipped paper never treated as candidate and quality separately tracked',()=>{const x=validation([],[o('A')],[{ticker:'A',at:'2026-11-23T14:03:00Z',decision:'SKIP',worker_observation_quality:'PASS'},{ticker:'B',at:'2026-11-23T14:03:00Z',decision:'PAPER_CANDIDATE',side:'YES'}]);assert.equal(x.summary.paper_candidates,1);assert.equal(x.summary.paper_skipped,1);assert.equal(x.summary.paper_pending,1);assert.equal(x.summary.quality_pass,1);});
+test('bad or conflicted official outcomes excluded',()=>{const x=validation([f('A')],[{...o('A'),conflict:true}],[]);assert.equal(x.summary.minute3_verified,0);});
