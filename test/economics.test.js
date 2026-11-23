@@ -1,0 +1,8 @@
+'use strict';const test=require('node:test'),assert=require('node:assert/strict');const {fee,scenario,analyze}=require('../economics');
+const row={ticker:'T',at:'2026-11-23T03:33:00Z',decision:'PAPER_CANDIDATE',side:'YES',ask:.7,p_yes:.8};
+test('standard fee rounds to centicent at total trade cost',()=>{assert.equal(fee(1,.5),.0175);assert.equal(fee(2,.5),.035);});
+test('whole contract cost including fee <= $5',()=>{const x=scenario(row);assert.ok(x.contracts>0);assert.ok(x.commitment_usd<=5);assert.ok((x.contracts+1)*row.ask+fee(x.contracts+1,row.ask)>5);});
+test('higher entry price stress cannot improve winning outcome',()=>{const a=scenario(row),b=scenario(row,.01);assert.ok(b.net_if_win_usd<=a.net_if_win_usd);});
+test('skips do not create positions or profit',()=>{const x=analyze([{...row,decision:'SKIP',reason:'LOW_CONFIDENCE'}],[{ticker:'T',result:'yes',verified:true,source:'kalshi_official'}]);assert.equal(x.summary.eligible,0);assert.equal(x.summary.scenario_net_usd,null);assert.equal(x.journal[0].contracts,0);});
+test('unverified and conflict outcomes never calculate settled profit',()=>{for(const o of [{ticker:'T',result:'yes',verified:false,source:'kalshi_official'},{ticker:'T',result:'yes',verified:true,conflict:true,source:'kalshi_official'}]){const x=analyze([row],[o]);assert.equal(x.summary.settled_costed,0);assert.equal(x.summary.scenario_net_usd,null);}});
+test('official verified outcomes provide conditional net only',()=>{const o={ticker:'T',result:'yes',verified:true,source:'kalshi_official'};const x=analyze([row],[o]);assert.equal(x.summary.settled_costed,1);assert.ok(x.summary.scenario_net_usd>0);assert.equal(x.policy.orders_enabled,false);assert.equal(x.journal[0].fill_verified,false);});
