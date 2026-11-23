@@ -112,3 +112,12 @@ Corrects the minute-3 shadow record creation path: a newly observed minute-3 pol
 * New Quality section and downloadable quote-quality CSV in each market tab. Existing `mc_records` payload JSON supports the fields; no SQL schema changes.
 * We do not infer executable liquidity, queue position, exchange price age, fee-inclusive profitability, or live-trading readiness. Model v1 is unchanged.
 * Live/demonstration orders remain HARD DISABLED; account access remains GET-only/read-only.
+
+
+## V2.3.3 — Cost-aware shadow *scenario*
+
+Adds `economics.js`, derived inside the authenticated `/api/research?symbol=` response. It does not change any existing paper candidate logic, market-collection writes, outcomes, Kalshi account access, or database schema. No orders are placed. The fee formula assumes the STANDARD Kalshi taker schedule as of July 7, 2026, with $0.0001 rounding of total purchase cost. Series-specific rates or later changes are **not checked**. Only whole contracts fitting within a $5 all-in hypothetical budget are included. A +1¢ adverse-price stress is shown. The summaries are conditional *if* entry liquidity/fill were available; the app does not have that evidence. Historical skipped signals remain skipped and generate no profit/loss. Net estimates apply only to officially verified market outcomes on eligible candidates.
+
+Reference: https://kalshi.com/docs/kalshi-fee-schedule.pdf and https://kalshi.com/fee-schedule.
+
+Run `npm test` and `node --check server.js`. No Supabase migration or new secrets required.
