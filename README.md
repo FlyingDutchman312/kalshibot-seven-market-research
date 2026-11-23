@@ -92,3 +92,9 @@ XRP was already integrated in the v2.1 seven-market release. The XRP tab uses **
 7. After an XRP 15-minute market closes, check the settlement audit and verified results. Official settlement reads may lag market close; persistent scores only incorporate verified outcomes.
 
 **Note:** No direct deployment into your GitHub, Render, or Supabase account has been performed by the build system. This is a ready-to-upload research package, not evidence of a running deployment.
+
+## V2.3 additive shadow evaluation
+
+Phase 2.3 adds `paper.js` and a shadow evaluation table to the existing `mc_records` storage. **No schema changes or data migrations are required.** Each market may record one minute-3 research-paper evaluation if a live quote-derived forecast is ready; missed minute-3 checkpoints are never recreated. The evaluation uses the official YES/NO contract ask captured in the same observation, not the midpoint, and checks a 65% model-heuristic confidence and 3 percentage-point edge against the ask. It saves eligible **and** skipped decisions. Every scored outcome requires a verified official settlement. The displayed gross P/L is a hypothetical fractional-contract normalization for a $5 stake; it assumes no real fill, omits fees and slippage, and cannot be used as a claim of actual attainable profits. `GET /api/research?symbol=...` adds a `paper` field with policy, summary and journal. All existing endpoints remain. Only GET routes exist, and real trading stays disabled. No new environment variables or secrets are needed.
+
+The original model remains a quote-based **heuristic, not AI**. No spot price/EMA/RSI/MACD data feeds exist in this repository: those indicators are deliberately not invented. Validate live forward prediction capture, settlement audits and paper journals before considering a future genuine indicator model or demo API integration.

@@ -1,6 +1,7 @@
 'use strict';
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {Store}=require('./storage');
+const {candidate,evaluate}=require('./paper');
 const {SERIES,discover,kalshi,snapshot,forecast,checkpoint,resultOf,settled,score,authorized,account,iso}=require('./lib');
 const store=new Store(),PORT=Number(process.env.PORT||3000),POLL=Math.max(15,Number(process.env.POLL_SECONDS||30))*1000;
 const assets=Object.keys(SERIES),cache=new Map(),errors={};let lastPoll=null,working=false,cycles=0;
@@ -17,7 +18,13 @@ async function tickSymbol(s){
  if(cp){const pid=`forward:${m.ticker}:${cp}`;if(!await store.find('forward',s,pid)){
    const quotes=(await store.list('quote',s,250,m.ticker)).reverse();
    const f=forecast(quotes);
-   if(f.ready){await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);}
+   if(f.ready){await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
+     // Only the first qualifying checkpoint generates one shadow decision per market.
+     // The prediction and quote are captured BEFORE official outcome publication.
+     if(cp===3){const paperId=`paper:${m.ticker}`;
+       if(!await store.find('paper',s,paperId))await store.put('paper',s,m.ticker,paperId,{...candidate({...f,checkpoint:cp},snap),origin:'live_pre_settlement_shadow',observed_quote_at:now,market_close_time:m.close_time},now);
+     }
+   }
  }}
 }
 async function auditTicker(s,ticker){
@@ -40,7 +47,7 @@ async function settlementSweep(s){
 }
 async function poll(){if(working)return;working=true;try{await store.health();await Promise.all(assets.map(async s=>{try{await tickSymbol(s);await settlementSweep(s);}catch(e){errors[s]=escapeError(e);console.warn('POLL_ERROR',s,escapeError(e));}}));lastPoll=new Date().toISOString();cycles++;}catch(e){errors.storage=escapeError(e);console.error('PERSISTENCE_ERROR',escapeError(e));}finally{working=false;}}
 function rowsSample(rows,limit=100){return rows.slice(0,limit);}
-async function dataset(symbol){const [predictions,outcomes,audits,quotes]=await Promise.all([store.list('forward',symbol,2500),store.list('outcome',symbol,1500),store.list('audit',symbol,1600),store.list('quote',symbol,1000)]);
+async function dataset(symbol){const [predictions,outcomes,audits,quotes,paperRows]=await Promise.all([store.list('forward',symbol,2500),store.list('outcome',symbol,1500),store.list('audit',symbol,1600),store.list('quote',symbol,1000),store.list('paper',symbol,2500)]);
  const ps=predictions.filter(p=>p.origin==='live_forward_pre_settlement');const official=outcomes.filter(o=>o.verified);
  const stats=score(ps,official);
  const verifiedByTicker=new Map(official.filter(o=>['yes','no'].includes(o.result)).map(o=>[o.ticker,o.result]));
@@ -49,7 +56,7 @@ async function dataset(symbol){const [predictions,outcomes,audits,quotes]=await 
  const marketCount=new Set(ps.map(p=>p.ticker)).size;
  const verifiedCount=new Set(ps.filter(p=>official.some(o=>o.ticker===p.ticker)).map(p=>p.ticker)).size;
  const disputes=audits.filter(x=>x.conflict).length;
- return {symbol,series:SERIES[symbol],stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
+ return {symbol,series:SERIES[symbol],paper:evaluate(paperRows,outcomes),stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
 }
 function replay(quotes,outcomes){
  const y=new Map(outcomes.filter(o=>o.verified&&resultOf(o)).map(o=>[o.ticker,o]));const by=new Map();
