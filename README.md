@@ -129,3 +129,8 @@ Adds `economics.js`, derived inside the authenticated `/api/research?symbol=` re
 Reference: https://kalshi.com/docs/kalshi-fee-schedule.pdf and https://kalshi.com/fee-schedule.
 
 Run `npm test` and `node --check server.js`. No Supabase migration or new secrets required.
+
+
+## Phase 2.3.5 — prospective validation scorecard
+
+Displays fixed-cutoff (2026-11-23 14:00 UTC) minute-3 Brier, rolling 25/50/100 accuracy and baseline advantage, confidence buckets, eligible paper coverage and quality coverage. No writes, no new environment variables, and no changed trading gates. Target n=100 is a reporting milestone, not approval for live trading. All reported P&L elsewhere remains conditional.
