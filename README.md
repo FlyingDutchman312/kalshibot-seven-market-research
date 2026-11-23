@@ -103,3 +103,12 @@ The original model remains a quote-based **heuristic, not AI**. No spot price/EM
 ## v2.3.1 — Prospective paper-write recovery (November 22, 2026)
 
 Corrects the minute-3 shadow record creation path: a newly observed minute-3 poll can write a missing `paper` record independently of an already saved `forward` record for the same ticker/checkpoint. A valid live forecast remains required; existing paper IDs are respected. A `PAPER_SAVED` server log line is emitted only after successful write. Historical or closed markets are **not backfilled**, and no missed paper trades are fabricated. No change to Supabase schema, environment variables, portfolio handling, or order permissions; production and demo orders remain unavailable.
+
+
+## V2.3.2 — Better prospective quote data
+
+* Adds `request_started_at`, `response_received_at`, `request_duration_ms`, and `receipt_age_ms` to each new quote; these are server/HTTP timings, **not** exchange-provided quote timestamps.
+* Adds a conservative quote-quality check for invalid bid/ask, market status, HTTP round-trip >10 s, and worker receipt age >10 s. New paper candidates are blocked if validation fails or is unknown. Historical paper records are unchanged.
+* New Quality section and downloadable quote-quality CSV in each market tab. Existing `mc_records` payload JSON supports the fields; no SQL schema changes.
+* We do not infer executable liquidity, queue position, exchange price age, fee-inclusive profitability, or live-trading readiness. Model v1 is unchanged.
+* Live/demonstration orders remain HARD DISABLED; account access remains GET-only/read-only.

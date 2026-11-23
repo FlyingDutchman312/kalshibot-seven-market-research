@@ -2,6 +2,7 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {Store}=require('./storage');
 const {candidate,evaluate}=require('./paper');
+const {assessQuote}=require('./quality');
 const {SERIES,discover,kalshi,snapshot,forecast,checkpoint,resultOf,settled,score,authorized,account,iso}=require('./lib');
 const store=new Store(),PORT=Number(process.env.PORT||3000),POLL=Math.max(15,Number(process.env.POLL_SECONDS||30))*1000;
 const assets=Object.keys(SERIES),cache=new Map(),errors={};let lastPoll=null,working=false,cycles=0;
@@ -11,7 +12,9 @@ function miniMarket(s){const old=cache.get(s);return old||{symbol:s,series:SERIE
 async function tickSymbol(s){
  const cur=await discover(s);cache.set(s,cur);errors[s]=null;
  const m=cur.market;if(!m)return;
- const now=new Date().toISOString(),snap=snapshot(m,now);
+ const now=new Date().toISOString(),rawSnap=snapshot(m,now);
+ const quality=assessQuote(rawSnap,cur,Date.parse(now));
+ const snap={...rawSnap,...quality};
  const id=`quote:${m.ticker}:${Math.floor(Date.now()/30000)}`;
  await store.put('quote',s,m.ticker,id,snap,now);
  const cp=checkpoint(m);
@@ -29,13 +32,13 @@ async function tickSymbol(s){
      const f=forecast(quotes);
      if(f.ready){
        if(needsForward){
-         await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
+         await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,quote_quality:quality.worker_observation_quality,quote_quality_reasons:quality.quality_reasons,quote_request_duration_ms:quality.request_duration_ms,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
        }
        // Independent of whether the forward row already exists. If an earlier
        // attempt saved forward but not paper, a subsequent *live* minute-3
        // poll can still write its one prospective paper observation.
        if(needsPaper){
-         await store.put('paper',s,m.ticker,paperId,{...candidate({...f,checkpoint:cp},snap),origin:'live_pre_settlement_shadow',observed_quote_at:now,market_close_time:m.close_time},now);
+         await store.put('paper',s,m.ticker,paperId,{...candidate({...f,checkpoint:cp},snap),...quality,origin:'live_pre_settlement_shadow',observed_quote_at:now,market_close_time:m.close_time},now);
          console.info('PAPER_SAVED',s,m.ticker);
        }
      }
@@ -71,7 +74,7 @@ async function dataset(symbol){const [predictions,outcomes,audits,quotes,paperRo
  const marketCount=new Set(ps.map(p=>p.ticker)).size;
  const verifiedCount=new Set(ps.filter(p=>official.some(o=>o.ticker===p.ticker)).map(p=>p.ticker)).size;
  const disputes=audits.filter(x=>x.conflict).length;
- return {symbol,series:SERIES[symbol],paper:evaluate(paperRows,outcomes),stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
+ return {symbol,series:SERIES[symbol],quote_quality:{sampled:quotes.length,worker_pass:quotes.filter(q=>q.worker_observation_quality==='PASS').length,worker_reject:quotes.filter(q=>q.worker_observation_quality==='REJECT').length,legacy_unknown:quotes.filter(q=>!q.worker_observation_quality).length,latest:quotes[0]?{at:quotes[0].at,status:quotes[0].worker_observation_quality||'LEGACY_UNKNOWN',reasons:quotes[0].quality_reasons||[],request_duration_ms:quotes[0].request_duration_ms??null,receipt_age_ms:quotes[0].receipt_age_ms??null,exchange_freshness_verified:false}:null,disclaimer:'Worker receipt metadata only; exchange quote freshness, order-book depth and executable fills are not verified.'},paper:evaluate(paperRows,outcomes),stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
 }
 function replay(quotes,outcomes){
  const y=new Map(outcomes.filter(o=>o.verified&&resultOf(o)).map(o=>[o.ticker,o]));const by=new Map();

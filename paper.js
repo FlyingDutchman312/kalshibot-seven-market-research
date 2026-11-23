@@ -9,7 +9,9 @@ function candidate(f,quote){
   const confidence=num(f.confidence);
   const edge=ask===null?null:probability-ask;
   let decision='SKIP',reason='';
-  if(ask===null||ask<=0||ask>MAX_ASK)reason='NO_EXECUTABLE_ASK';
+  if(quote.worker_observation_quality==='REJECT')reason='QUOTE_QUALITY_REJECT';
+  else if(quote.worker_observation_quality!=='PASS')reason='QUOTE_QUALITY_UNKNOWN';
+  else if(ask===null||ask<=0||ask>MAX_ASK)reason='NO_EXECUTABLE_ASK';
   else if(confidence===null||confidence<MIN_CONFIDENCE)reason='LOW_CONFIDENCE';
   else if(edge<MIN_EDGE)reason='INSUFFICIENT_EDGE_OVER_ASK';
   else {decision='PAPER_CANDIDATE';reason='ELIGIBLE_SHADOW_ONLY';}
