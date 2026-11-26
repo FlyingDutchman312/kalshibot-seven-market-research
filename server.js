@@ -6,6 +6,7 @@ const {assessQuote}=require('./quality');
 const {analyze}=require('./economics');
 const {analyzeEdge}=require('./edge_analysis');
 const {validation}=require('./prospective');
+const shadow=require('./shadow');
 const {SERIES,discover,kalshi,snapshot,forecast,checkpoint,resultOf,settled,score,authorized,account,iso}=require('./lib');
 const zlib=require('node:zlib');
 const store=new Store(),PORT=Number(process.env.PORT||3000),POLL=Math.max(15,Number(process.env.POLL_SECONDS||30))*1000;
@@ -36,7 +37,7 @@ async function tickSymbol(s){
      const f=forecast(quotes);
      if(f.ready){
        if(needsForward){
-         await store.put('forward',s,m.ticker,pid,{...f,checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,quote_quality:quality.worker_observation_quality,quote_quality_reasons:quality.quality_reasons,quote_request_duration_ms:quality.request_duration_ms,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
+         await store.put('forward',s,m.ticker,pid,{...f,shadow:shadow.capture(f,cp,snap,now,m.open_time,m.close_time),checkpoint:cp,market_open_time:m.open_time,market_close_time:m.close_time,observed_quote_at:quotes.at(-1)?.at,quote_quality:quality.worker_observation_quality,quote_quality_reasons:quality.quality_reasons,quote_request_duration_ms:quality.request_duration_ms,origin:'live_forward_pre_settlement',official_result_known_at_prediction:false},now);
        }
        // Independent of whether the forward row already exists. If an earlier
        // attempt saved forward but not paper, a subsequent *live* minute-3
@@ -73,7 +74,7 @@ async function settlementSweep(s){
 let persistenceSnapshot=null;
 async function poll(){if(working)return;working=true;try{persistenceSnapshot=await store.health();await Promise.all(assets.map(async s=>{try{await tickSymbol(s);await settlementSweep(s);}catch(e){errors[s]=escapeError(e);console.warn('POLL_ERROR',s,escapeError(e));}}));lastPoll=new Date().toISOString();cycles++;}catch(e){persistenceSnapshot={ok:false,error:escapeError(e)};errors.storage=escapeError(e);console.error('PERSISTENCE_ERROR',escapeError(e));}finally{working=false;}}
 function rowsSample(rows,limit=100){return rows.slice(0,limit);}
-async function dataset(symbol){const [predictions,outcomes,audits,quotes,paperRows]=await Promise.all([store.list('forward',symbol,2500),store.list('outcome',symbol,1500),store.list('audit',symbol,1600),store.list('quote',symbol,1000),store.list('paper',symbol,2500)]);
+async function dataset(symbol){const [predictions,outcomes,audits,quotes,paperRows]=await Promise.all([store.list('forward',symbol,1000),store.list('outcome',symbol,1000),store.list('audit',symbol,1600),store.list('quote',symbol,1000),store.list('paper',symbol,2500)]);
  const ps=predictions.filter(p=>p.origin==='live_forward_pre_settlement');const official=outcomes.filter(o=>o.verified);
  const stats=score(ps,official);
  const verifiedByTicker=new Map(official.filter(o=>['yes','no'].includes(o.result)).map(o=>[o.ticker,o.result]));
@@ -82,7 +83,7 @@ async function dataset(symbol){const [predictions,outcomes,audits,quotes,paperRo
  const marketCount=new Set(ps.map(p=>p.ticker)).size;
  const verifiedCount=new Set(ps.filter(p=>official.some(o=>o.ticker===p.ticker)).map(p=>p.ticker)).size;
  const disputes=audits.filter(x=>x.conflict).length;
- return {symbol,series:SERIES[symbol],quote_quality:{sampled:quotes.length,worker_pass:quotes.filter(q=>q.worker_observation_quality==='PASS').length,worker_reject:quotes.filter(q=>q.worker_observation_quality==='REJECT').length,legacy_unknown:quotes.filter(q=>!q.worker_observation_quality).length,latest:quotes[0]?{at:quotes[0].at,status:quotes[0].worker_observation_quality||'LEGACY_UNKNOWN',reasons:quotes[0].quality_reasons||[],request_duration_ms:quotes[0].request_duration_ms??null,receipt_age_ms:quotes[0].receipt_age_ms??null,exchange_freshness_verified:false}:null,disclaimer:'Worker receipt metadata only; exchange quote freshness, order-book depth and executable fills are not verified.'},paper:evaluate(paperRows,outcomes),economics:analyze(paperRows,outcomes),edge_analysis:analyzeEdge(paperRows,outcomes,ps),prospective_validation:validation(ps,outcomes,paperRows),stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
+ return {symbol,series:SERIES[symbol],quote_quality:{sampled:quotes.length,worker_pass:quotes.filter(q=>q.worker_observation_quality==='PASS').length,worker_reject:quotes.filter(q=>q.worker_observation_quality==='REJECT').length,legacy_unknown:quotes.filter(q=>!q.worker_observation_quality).length,latest:quotes[0]?{at:quotes[0].at,status:quotes[0].worker_observation_quality||'LEGACY_UNKNOWN',reasons:quotes[0].quality_reasons||[],request_duration_ms:quotes[0].request_duration_ms??null,receipt_age_ms:quotes[0].receipt_age_ms??null,exchange_freshness_verified:false}:null,disclaimer:'Worker receipt metadata only; exchange quote freshness, order-book depth and executable fills are not verified.'},paper:evaluate(paperRows,outcomes),economics:analyze(paperRows,outcomes),edge_analysis:analyzeEdge(paperRows,outcomes,ps),prospective_validation:validation(ps,outcomes,paperRows),shadow_validation:shadow.summarize(ps,outcomes),stats:{...stats,forward_signals:ps.length,distinct_forward_markets:marketCount,verified_distinct_forward_markets:verifiedCount,official_results:official.length,distinct_audited_markets:new Set(audits.map(a=>a.ticker)).size,official_read_disputes:disputes,quotes_saved:quotes.length,score_note:'Brier scores count checkpoint-level predictions; multiple checkpoints in one market are correlated. Market-level count is reported separately.',promotion:'BLOCKED_RESEARCH_ONLY'},checkpoint_stats,journal,predictions:rowsSample(ps,120),outcomes:rowsSample(outcomes,120),audits:rowsSample(audits,120),quotes:rowsSample(quotes,250)};
 }
 function replay(quotes,outcomes){
  const y=new Map(outcomes.filter(o=>o.verified&&resultOf(o)).map(o=>[o.ticker,o]));const by=new Map();
@@ -101,7 +102,7 @@ const server=http.createServer(async(req,res)=>{
  let u;try{u=new URL(req.url,'http://localhost');}catch{return send(res,400,{error:'Invalid URL'});}
  if(req.method!=='GET')return send(res,405,{error:'Only GET is supported. No order-writing routes exist.'});
  const route=u.pathname;
- if(route==='/api/health'){const persistence=persistenceSnapshot||{ok:false,mode:store.mode};return send(res,200,{status:persistence.ok&&lastPoll?'running':'starting_or_degraded',version:"2.3.7",bandwidth_mode:"low-v1",research_cache_seconds:300,settlement_sweep_seconds:300,research_only:true,live_trading_enabled:false,demo_trading_enabled:false,orders_enabled:false,assets,series:SERIES,persistence,last_poll:lastPoll,cycles,poll_running:working,errors,account_key_configured:!!(process.env.KALSHI_API_KEY_ID&&process.env.KALSHI_PRIVATE_KEY_PEM),viewer_auth_enabled:!!process.env.VIEWER_PASSPHRASE});}
+ if(route==='/api/health'){const persistence=persistenceSnapshot||{ok:false,mode:store.mode};return send(res,200,{status:persistence.ok&&lastPoll?'running':'starting_or_degraded',version:"2.4.0",bandwidth_mode:"low-v1",research_cache_seconds:300,settlement_sweep_seconds:300,research_only:true,live_trading_enabled:false,demo_trading_enabled:false,orders_enabled:false,assets,series:SERIES,persistence,last_poll:lastPoll,cycles,poll_running:working,errors,account_key_configured:!!(process.env.KALSHI_API_KEY_ID&&process.env.KALSHI_PRIVATE_KEY_PEM),viewer_auth_enabled:!!process.env.VIEWER_PASSPHRASE});}
  if(route==='/api/overview')return send(res,200,{markets:assets.map(miniMarket),as_of:new Date().toISOString(),research_only:true});
  if(route==='/api/market'){const s=(u.searchParams.get('symbol')||'').toUpperCase();return assets.includes(s)?send(res,200,miniMarket(s)):send(res,400,{error:'Unknown symbol'});}
  if(route.startsWith('/api/')){

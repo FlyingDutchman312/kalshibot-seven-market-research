@@ -1,6 +1,6 @@
 {
   "name": "kalshibot-seven-market-research",
-  "version": "2.3.7",
+  "version": "2.4.0",
   "private": true,
   "description": "Seven Kalshi 15-minute markets: persistent research, audit and read-only account console",
   "engines": {
@@ -9,6 +9,6 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "check": "node --check server.js && node --check lib.js && node --check storage.js && node --check paper.js && node --check quality.js && node --check economics.js && node --check edge_analysis.js && node --check public/app.js && node --check prospective.js"
+    "check": "node --check server.js && node --check lib.js && node --check storage.js && node --check paper.js && node --check quality.js && node --check economics.js && node --check edge_analysis.js && node --check public/app.js && node --check prospective.js && node --check shadow.js"
   }
 }

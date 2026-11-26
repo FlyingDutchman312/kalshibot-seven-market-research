@@ -140,3 +140,6 @@ Market polling and checkpoint logic unchanged. Settlement scans every five minut
 
 ## V2.3.7
 Separate protected research request lifecycle from public polling; coalesce duplicate requests and reject stale asset/passphrase responses. No strategy or storage changes.
+
+## Phase 2.4.0 — frozen prospective shadow comparison
+New forward rows embed five probability candidates and quote context in the existing JSON payload, before close. No backfill or model fitting. Candidate weights are deliberately fixed experimental defaults, not fitted calibration: original, midpoint, 1.1x expansion around 0.5 (clipped), 25% original/75% midpoint, and checkpoint weights 50/40/30/20/10% original. Compare on identical verified outcomes, separately per checkpoint, with recent 25/100 Brier and minute-3 calibration. One-contract conditional economics uses assumed 7% standard taker formula, only positive EV on worker-quality PASS quotes; not actual fills. Existing 1000-row API window explicitly labeled; lifetime aggregation and adaptive training deferred. No additional database queries for shadow scoring and no schema changes. No order execution. New shadow rows are the evaluation cohort; do not tune on them and claim an untouched holdout. Dashboard repair retained. Deploy all changed files including shadow.js.
