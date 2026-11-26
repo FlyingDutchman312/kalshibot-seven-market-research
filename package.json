@@ -1,6 +1,6 @@
 {
   "name": "kalshibot-seven-market-research",
-  "version": "2.3.6",
+  "version": "2.3.7",
   "private": true,
   "description": "Seven Kalshi 15-minute markets: persistent research, audit and read-only account console",
   "engines": {
