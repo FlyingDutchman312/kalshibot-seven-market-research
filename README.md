@@ -134,3 +134,6 @@ Run `npm test` and `node --check server.js`. No Supabase migration or new secret
 ## Phase 2.3.5 — prospective validation scorecard
 
 Displays fixed-cutoff (2026-11-23 14:00 UTC) minute-3 Brier, rolling 25/50/100 accuracy and baseline advantage, confidence buckets, eligible paper coverage and quality coverage. No writes, no new environment variables, and no changed trading gates. Target n=100 is a reporting milestone, not approval for live trading. All reported P&L elsewhere remains conditional.
+
+## V2.3.6 low-bandwidth mode
+Market polling and checkpoint logic unchanged. Settlement scans every five minutes (up to 25 unresolved tickers per sweep to preserve nominal throughput); research cache five minutes, per asset, after viewer authorization. Browser research refresh five minutes; hidden tabs pause polling. Health uses last worker health result. JSON gzip for supported clients. No schema changes. Existing read-only account route unchanged; no orders. Settlement reporting can lag. Existing bounded research windows remain unchanged.
