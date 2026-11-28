@@ -1,0 +1,24 @@
+name: Mission Control Research Tests
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['research/v2.4.1-reliability']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: npm run check
+      - name: Regression tests (no production credentials)
+        run: npm test
